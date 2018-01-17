@@ -1,9 +1,57 @@
-##Clear
+---
+title: "Capstone Milestone Report"
+author: "Kevin McCue"
+date: "January 14, 2018"
+output:
+  html_document:
+    code_folding: hide
+---
+
+
+
+
+##Introduction
+Typing can be exteremly repetative and redunant with most sentences being structured and written much in the same way.  Smart keyboards help makes it easier for people to type - on their mobile devices or their computers - anticipating the next word being used.  This project ultimately will attempt to design and implement a prediction for the next word based on the previous words written presented as an app.  
+
+
+The app might present up to *three* options for the next word. 
+
+**For example, if someone typed:**
+*"I went to the "* 
+
+**The app might output**: 
+* bar
+* game
+* store
+
+This project is aimed on building predictive text models like those used by **SwiftKey**.
+
+
+The first step in building this predictive model is understanding the distribution and relationship between the words, tokens, and phrases in the text. The goal of this milestone report is to present the basic relationships observed in the data and prepare to build my first predictive linguistic models.
+
+
+
+**Exploratory analysis** - perform a thorough exploratory analysis of the data, understanding the distribution of words and relationship between the words in the corpora.
+Understand frequencies of words and word pairs - build figures and tables to understand variation in the frequencies of words and word pairs in the data.
+
+**Questions to consider:**
+* Some words are more frequent than others - what are the distributions of word frequencies?
+* What are the frequencies of 2-grams and 3-grams in the dataset?
+* How many unique words are needed in a frequency sorted dictionary to cover 50% of all word instances in the language? 90%?
+* How to evaluate how many of the words come from foreign languages?
+* A way to increase the coverage - identifying words that may not be in the corpora or using a smaller number of words in the dictionary to cover the same number of phrases.
+
+
+##Downloading the Data and Loading All Required Packages:
+```{r setup}
+options(warn=-1)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packagesanddownloads, warnings = FALSE}
 rm(list=ls(all=TRUE));gc(reset=TRUE);par(mfrow=c(1,1))
 set.seed(11235813)
-## Turn on parallel processing
-library(parallel); no_cores <- detectCores() - 1; cl <- makeCluster(no_cores); parLapply(cl, 2:4, function(exponent) 2^exponent);
-
+options(warn=-1)
 ##Download and Load Packages
 if (!require("data.table")) {install.packages("data.table")}
 suppressPackageStartupMessages(library(data.table))
@@ -17,14 +65,14 @@ if (!require("stringi")) {install.packages("stringi")}
 suppressPackageStartupMessages(library(stringi))
 if (!require("ggplot2")) {install.packages("ggplot2")}
 suppressPackageStartupMessages(library(ggplot2))
+if (!require("grid")) {install.packages("grid")}
+suppressPackageStartupMessages(library(grid))
 if (!require("rJava")) {install.packages("rJava")} 
 suppressPackageStartupMessages(require(rJava))
 if (!require("RWeka")) {install.packages("RWeka")}
 suppressPackageStartupMessages(library(openNLP))
 if (!require("wordcloud")) {install.packages("wordcloud")}
 suppressPackageStartupMessages(library(utils))
-if (!require("pander")) {install.packages("pander")} 
-suppressPackageStartupMessages(require(pander))
 if (!require("textmineR")) {install.packages("textmineR")} 
 suppressPackageStartupMessages(require(textmineR))
 if (!require("stringr")) {install.packages("stringr")} 
@@ -33,6 +81,12 @@ if (!require("knitr")) {install.packages("knitr")}
 suppressPackageStartupMessages(require(knitr))
 if (!require("RColorBrewer")) {install.packages("RColorBrewer")} 
 suppressPackageStartupMessages(require(RColorBrewer))
+if (!require("devtools")) {install.packages("devtools")} 
+suppressPackageStartupMessages(require(devtools))
+if (!require("easyGgplot2")) {install_github("easyGgplot2", "kassambara")} 
+suppressPackageStartupMessages(require(easyGgplot2))
+
+
 
 ##Set the Working Directory
 mainDir <- "~."
@@ -72,6 +126,7 @@ if (!file.exists(paste(outDir, unzipDir, US_blogs_file, sep =""))) {
 if (!file.exists(paste(outDir, unzipDir, US_news_file, sep =""))) {
   unzip(FileName,exdir=outDir)}
 
+maindir <- getwd()
 US_twitter_Data <- readLines(paste(outDir, unzipDir, US_twitter_file, sep =""))
 US_blogs_Data <- readLines(paste(outDir, unzipDir, US_blogs_file, sep =""))
 US_news_Data <- readLines(paste(outDir, unzipDir, US_news_file, sep =""))
@@ -84,26 +139,22 @@ if (!file.exists(FileName)) {
   download.file(FileURL ,FileName,method="auto") }
 unzip(FileName,exdir=outDir)
 US_Bad_Words <- readLines(paste(outDir, "/full-list-of-bad-words-banned-by-google-txt-file_2013_11_26_04_53_31_867.txt", sep =""))
+```
 
+The data is simple text files. Each line inside text file represents an individual message or story or post.
+
+
+
+## Data File Statistics:
+```{r summarytable}
 outDir<-"unzipfolder"
-filesizetwitter <- file.info(paste(outDir, unzipDir, US_twitter_file, sep =""))$size / 1024 ^ 2
-filesizeblogs <- file.info(paste(outDir, unzipDir, US_blogs_file, sep =""))$size / 1024 ^ 2
-filesizenews <- file.info(paste(outDir, unzipDir, US_news_file, sep =""))$size / 1024 ^ 2
+filesizetwitter <- file.info(paste(outDir, unzipDir, US_twitter_file, sep =""))$size / (1024 ^ 2)
+filesizeblogs <- file.info(paste(outDir, unzipDir, US_blogs_file, sep =""))$size / (1024 ^ 2)
+filesizenews <- file.info(paste(outDir, unzipDir, US_news_file, sep =""))$size / (1024 ^ 2)
 wordstwitter <-  data.frame(WordCount = stri_count_words(US_twitter_Data), Source = "Twitter")
 wordsblogs <-  data.frame(WordCount = stri_count_words(US_blogs_Data), Source = "Blogs")
 wordsnews <-  data.frame(WordCount = stri_count_words(US_news_Data), Source = "News")
 Summary <- rbind(wordstwitter, wordsblogs, wordsnews)
-
-##Histograms of the three data sets
-par(mfrow=c(3,1))
-hist_colors <- brewer.pal(8, "Blues")
-curve_colors <- brewer.pal(8, "RdBu")
-    hist(wordstwitter$WordCount, freq=FALSE,breaks = 70, col = hist_colors[4], xlim = c(0, 100), ylim = c(0, 0.06), main = "US Twitter Word Count", xlab = "Word Count")
-    curve(dnorm(x, mean=mean(wordstwitter$WordCount), sd=sd(wordstwitter$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
-    hist(wordsblogs$WordCount, freq=FALSE, breaks = 2500, col = hist_colors[5], xlim = c(0, 300), ylim = c(0, 0.04), main = "US Blogs Word Count", xlab = "Word Count")
-    curve(dnorm(x, mean=mean(wordsblogs$WordCount), sd=sd(wordsblogs$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
-    hist(wordsnews$WordCount, freq=FALSE, breaks = 700, col = hist_colors[6], xlim = c(0, 200), ylim = c(0, 0.025), main = "US News Word Count", xlab = "Word Count")
-    curve(dnorm(x, mean=mean(wordsnews$WordCount), sd=sd(wordsnews$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
 
 ##Table to summarize the data
 SummaryTable <- data.frame(Source = c("News","Blogs","Twitter"),
@@ -114,9 +165,27 @@ SummaryTable <- data.frame(Source = c("News","Blogs","Twitter"),
               "Median Words Per Rows" = c(median(wordsnews$WordCount),median(wordsblogs$WordCount), median(wordstwitter$WordCount)),
               "Variance of Words Per Rows" = c(var(wordsnews$WordCount),var(wordsblogs$WordCount),var(wordstwitter$WordCount)))
 kable(SummaryTable)
+```
 
+##Histograms of each Data Set (Specifically, Word Count Per Row):
+```{r histograms}
+##Histograms of the three data sets
+par(mfrow=c(3,1))
+hist_colors <- brewer.pal(8, "Blues")
+curve_colors <- brewer.pal(8, "RdBu")
+    hist(wordstwitter$WordCount, freq=FALSE,breaks = 70, col = hist_colors[4], xlim = c(0, 100), ylim = c(0, 0.06), main = "US Twitter Word Count", xlab = "Word Count")
+    curve(dnorm(x, mean=mean(wordstwitter$WordCount), sd=sd(wordstwitter$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
+    hist(wordsblogs$WordCount, freq=FALSE, breaks = 2500, col = hist_colors[5], xlim = c(0, 300), ylim = c(0, 0.04), main = "US Blogs Word Count", xlab = "Word Count")
+    curve(dnorm(x, mean=mean(wordsblogs$WordCount), sd=sd(wordsblogs$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
+    hist(wordsnews$WordCount, freq=FALSE, breaks = 700, col = hist_colors[6], xlim = c(0, 200), ylim = c(0, 0.025), main = "US News Word Count", xlab = "Word Count")
+    curve(dnorm(x, mean=mean(wordsnews$WordCount), sd=sd(wordsnews$WordCount)), add=TRUE, col=curve_colors[1], lwd=2) 
+```
+        
+
+##Sampling the Large Data Set:
+```{r sampling}
 # Random subset of the data for further exploratory analysis
-n  <- 20000
+n  <- 2000
 random_twitter <- ceiling(runif(n=n, min=0, max=length(US_twitter_Data)))
 random_blogs <- ceiling(runif(n=n, min=0, max=length(US_blogs_Data)))
 random_news <- ceiling(runif(n=n, min=0, max=length(US_news_Data)))
@@ -124,11 +193,14 @@ twitter_random_sub <- US_twitter_Data[random_twitter]
 blogs_random_sub <- US_blogs_Data[random_blogs]
 news_random_sub <- US_news_Data[random_news]
 sample <- rbind(twitter_random_sub, blogs_random_sub, news_random_sub)
+```
 
+##My Custom Functions for Exploratory Analysis:
+```{r customfunctions}
 TextScrubber <- function(sample) {
 #Input vector of strings from english sources, Output a cleaned dataframe.
     # convert string to vector of words
-    corpus <- unlist(strsplit(sample, split=". //? //! "))
+    corpus <- unlist(strsplit(sample, split=", "))
     ##Remove emails
     RmvEmail <- function(x) {gsub("\\S+@\\S+", "", x)} 
     ##Remove URLS
@@ -143,9 +215,13 @@ TextScrubber <- function(sample) {
     corpus <- RmvHashtag(corpus)
     corpus <- RmvHandle(corpus)
     # find indices of words with non-ASCII characters, remove words with non-ASCII characters
-    corpus <- iconv(corpus, "latin1", "ASCII", sub=" ")
+    dat <- grep("corpus", iconv(sample, "latin1", "ASCII", sub="corpus"))
+    # subset original vector of words to exclude words with non-ASCII char
+    sample <- sample[-dat]
+    # convert vector back to a string
+    sample <- paste(sample, collapse = ", ")
     # make corpus
-    corpus <- VCorpus(VectorSource(sample))
+    corpus <- VCorpus(VectorSource(sample), readerControl=list(language="en"))
     # finish cleaning
     corpus <- tm_map(corpus, removeWords, stopwords("english")) 
     corpus <- tm_map(corpus,removePunctuation)
@@ -157,22 +233,7 @@ TextScrubber <- function(sample) {
     #output
     corpus
 }
-Corpus <- TextScrubber(sample)
-
-
-
-CorpusDataFrame <-data.frame(text=unlist(sapply(Corpus, `[`, "content")), stringsAsFactors=F)
-
-#Exploring various tokens (1 to 5)
-delimiter <- " \\r\\n\\t.,;:\"()?!"
-onetoken <- NGramTokenizer(Corpus, Weka_control(min = 1, max = 1))
-twotoken <- NGramTokenizer(Corpus, Weka_control(min = 2, max = 2, delimiters = delimiter))
-threetoken <- NGramTokenizer(Corpus, Weka_control(min = 3, max = 3, delimiters = delimiter))
-fourtoken <- NGramTokenizer(Corpus, Weka_control(min = 4, max = 4, delimiters = delimiter))
-fivetoken <- NGramTokenizer(Corpus, Weka_control(min = 5, max = 5, delimiters = delimiter))
-
-#fuction to create word clouds - input tokenized data from NGramTokenizer, n-gram output word cloud plots
-palette <- brewer.pal(8,"Spectral")
+##For creating a word cloud of the top 50 terms of a tokenized ngram
 cloud <- function (token) {
   t <- data.frame(table(token))
   sort <- t[order(t$Freq, decreasing = TRUE),]
@@ -181,64 +242,118 @@ cloud <- function (token) {
             random.order = F, ordered.colors = F, colors=palette)
   text(x=0.5, y=1, paste(n, "-gram word cloud", sep = ""))
 }
+##Fot plotting the top 20 terms of a tokenized ngram
+NgramBarGraphPlotter <- function(gram, title) {
+  t <- data.frame(table(gram))
+  colnames(t) <- c("term","freq")
+  t <- t[order(t$freq, decreasing = TRUE),]
+  ggplot(head(t,20), aes(x=reorder(term,-freq), y=freq, fill=freq)) +
+    geom_bar(stat="Identity") +
+    geom_text(aes(label=freq), vjust = -0.5) +
+    ggtitle(title) +
+    ylab("Frequency") +
+    xlab("Term")  + theme(axis.text.x=element_text(angle=45, hjust=1))
+  
+}
 
 #function to create tokens of size 1 to 3 from dataframe that came from TextScrubber
-Tokenizer_1_to_3 = function (x) NGramTokenizer(x, Weka_control(min = 1, max = 3))
+Tokenizer_1_to_4 = function (x) NGramTokenizer(x, Weka_control(min = 1L, max = 4L))
 
 #fuction to create word clouds - input tokenized data from NGramTokenizer, multi-gram output word cloud plots
 cloud_n_to_m <- function (token) {
   t <- data.frame(table(token))
   sort <- t[order(t$Freq, decreasing = TRUE),]
-  n <- min(stri_count_words(sort[,1]) )
+  n <- min(stri_count_words(sort[,1]) )  
   m <- max(stri_count_words(sort[,1]) ) 
-  wordcloud(sort[,1], sort[,2], min.freq =1, max.words = 150,
+  wordcloud(sort[,1], sort[,2], min.freq =1, max.words = 100,
             random.order = F, ordered.colors = F, colors=palette)
   text(x=0.5, y=1, paste(n,"-gram to ", m, "-gram word cloud", sep = ""))
 }
 
+##frequency table maker from token
+freq.dataframe <- function(token) {
+  t <- data.frame(table(token))
+  colnames(t) <- c("term","freq")
+  t <- t[order(t$freq, decreasing = TRUE),]
+}
+  
+```
+
+##Creating and Cleaning the Corpus:
+```{r corpusandcleaning}
+Corpus <- TextScrubber(sample)
+CorpusDataFrame <-data.frame(text=unlist(sapply(Corpus, `[`, "content")), stringsAsFactors=F)
+```
+
+##Creating the tokens:
+```{r tokens}
+#Exploring various tokens (1 to 5)
+delimiter <- " \\r\\n\\t.,;:\"()?!"
+onetoken <- NGramTokenizer(Corpus, Weka_control(min = 1, max = 1))
+twotoken <- NGramTokenizer(Corpus, Weka_control(min = 2, max = 2, delimiters = delimiter))
+threetoken <- NGramTokenizer(Corpus, Weka_control(min = 3, max = 3, delimiters = delimiter))
+fourtoken <- NGramTokenizer(Corpus, Weka_control(min = 4, max = 4, delimiters = delimiter))
+fivetoken <- NGramTokenizer(Corpus, Weka_control(min = 5, max = 5, delimiters = delimiter))
+tokens <- Tokenizer_1_to_4(CorpusDataFrame)
+unitoken.freq <-   freq.dataframe(onetoken)
+bitoken.freq <-   freq.dataframe(twotoken)
+tritoken.freq <-   freq.dataframe(threetoken)
+quadtoken.freq <-   freq.dataframe(fourtoken)
+multitoken.freq <- freq.dataframe(tokens)
+```
+
+##Wordclouds for 1-4 gram tokens:
+```{r wordclouds, warnings = FALSE}
+
+palette <- brewer.pal(8,"Spectral")
 par(mfrow = c(2, 2))
 cloud(onetoken)
 cloud(twotoken)
 cloud(threetoken)
 cloud(fourtoken)
+```
 
-tokens <- Tokenizer_1_to_3(CorpusDataFrame)
+Obviously, "i" is extremely common.
+
+
+
+##Wordcloud of 1 to 4 gram token just because:
+```{r wordclouds2}
+palette <- brewer.pal(8,"Spectral")
 par(mfrow = c(1, 1))
 cloud_n_to_m(tokens)
+```
 
-NgramBarGraphPlotter <- function(token, title) {
-  t <- data.frame(table(token))
-  colnames(t) <- c("term","freq")
-  t <- t[order(t$freq, decreasing = TRUE),]
-  ggplot(head(t,30), aes(x=reorder(term,-freq), y=freq, fill=freq)) +
-    geom_bar(stat="Identity") +
-    geom_text(aes(label=freq), vjust = -0.5) +
-    ggtitle("title") +
-    ylab("Frequency") +
-    xlab("Term")  + theme(axis.text.x=element_text(angle=45, hjust=1))
-  
-}
+##Barplots of various the Top 20 of 1 to 4-grams: 
+```{r bargraphtop30}
 par(mfrow = c(1, 1))
-if (!require("devtools")) {install.packages("devtools")} 
-suppressPackageStartupMessages(require(devtools))
-if (!require("easyGgplot2")) {install_github("easyGgplot2", "kassambara")} 
-suppressPackageStartupMessages(require(easyGgplot2))
 p1 <- NgramBarGraphPlotter(onetoken, "Unigram Plot of Most Frequest Terms")
 p2 <- NgramBarGraphPlotter(twotoken, "Bigram Plot of Most Frequest Terms")
 p3 <- NgramBarGraphPlotter(threetoken, "Trigram Plot of Most Frequest Terms")
 p4 <- NgramBarGraphPlotter(fourtoken, "Quadgram Plot of Most Frequest Terms")
 ggplot2.multiplot(p1, p2, cols=1)
-ggplot2.multiplot(p3, p4, cols=1)
-#
-#
-#
 
+
+ggplot2.multiplot(p3, p4, cols=1)
+```
+
+
+
+
+##Histgrams of the Log2 of the Frequency of each Term:
+```{r log2histograms}
 par(mfrow = c(2, 2))
 hist(log2(unitoken.freq$freq), main="Unigram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 hist(log2(bitoken.freq$freq), main="Bigram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 hist(log2(tritoken.freq$freq), main="Trigram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 hist(log2(quadtoken.freq$freq), main="Quadgram's Frequencies Histogram", xlab="Log Frequency", ylab="")
+```
 
+Viewing each ngrams's frequency as the Log2 of the frequency shows an improved relation of the data.
+
+
+##The Coverage of the Tokens as They Grow Larger:
+```{r coverageplots}
 par(mfrow = c(2, 2))
 dictionary.size.to.coverage.uni <- cumsum(unitoken.freq$freq * 100 / sum(unitoken.freq$freq))
 plot(x=1:length(dictionary.size.to.coverage.uni),
@@ -259,36 +374,14 @@ dictionary.size.to.coverage.quad <- cumsum(quadtoken.freq$freq * 100 / sum(quadt
 plot(x=1:length(dictionary.size.to.coverage.quad),
      y=dictionary.size.to.coverage.quad,
      type="l", main="Quadgram Coverage", xlab="Dictionary Size (words)", ylab="Coverage (percent)")
+options(warn=0)
+```
+
+Interestingly enough, as the ngram grows, the coverage moves from logarithmic dependency to extremely linear.
 
 
-WorkingDir <- getwd()
-subDirTask <- "Task01"
-if (file.exists(subDirTask)) {setwd(file.path(WorkingDir, subDirTask))}  else 
-{dir.create(file.path(WorkingDir,subDirTask), showWarnings = FALSE) 
-  setwd(file.path(WorkingDir, subDirTask))}
-
-SubDir <- getwd()
-subDirFolderName <- "US_Subsetted_Outputs"
-if (file.exists(subDirFolderName)) {setwd(file.path(SubDir, subDirFolderName))}  else 
-{dir.create(file.path(SubDir,subDirFolderName), showWarnings = FALSE) 
-  setwd(file.path(SubDir, subDirFolderName))}
-
-SubDir <- getwd()
-
-dtm.corpus <- DocumentTermMatrix(Corpus)
-dim(dtm.corpus)
-class(dtm.corpus)
-
-##Predictive Modelling
-if (!require("e1071")) {install.packages("e1071")} 
-suppressPackageStartupMessages(require(e1071))
-if (!require("kernlab")) {install.packages("kernlab")} 
-suppressPackageStartupMessages(require(kernlab))
-if (!require("SnowballC")) {install.packages("SnowballC")} 
-suppressPackageStartupMessages(require(SnowballC))
-
-
-data("crude")
-
-# Finish
-stopCluster(cl)
+##Next up:  
+* Creating a prediction model using this data.
+* Improving the model so it can be turned into an app that will perform at a decent speed.
+* Create the app.
+* Celebrate.
